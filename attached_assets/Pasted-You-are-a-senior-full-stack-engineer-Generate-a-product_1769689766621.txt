@@ -1,0 +1,190 @@
+You are a senior full-stack engineer. Generate a production-lean logistics web app called “Motio” for car dealerships that replaces an Excel workflow.
+
+Hard constraints
+- Monorepo with /api and /web.
+- Backend: Node.js + Express.js + Sequelize + MySQL.
+- Auth: JWT (14 days). Password hashing with bcrypt. RBAC middleware.
+- API docs: Swagger (OpenAPI 3). Hosted at /api/doc.
+- DB: MySQL in cloud. Must support SSL connection options in Sequelize config.
+- Frontend: HTML/CSS/JavaScript (no heavy frameworks). Use server-rendered pages with EJS OR plain static pages that call the API. Pick one and stick to it.
+- Tooling: Docker Compose for local dev (MySQL + API + Web). DBeaver is used as DB client. Provide clear instructions to connect DBeaver and to run migrations/seeds.
+- CI: GitHub Actions workflow that runs tests and lints for /api.
+- No guest access. All pages require login except /login.
+- Security basics: helmet, cors, input validation (Joi), centralized error handling, rate limit on auth.
+
+Core business domain
+This app replaces spreadsheet tabs like:
+- “Biler inn og salg” (vehicles intake and sold)
+- “Klargjøring” (prep tasks)
+- “NAF” (inspection bookings and reports)
+- “Shithappens” (issues/claims and workshop routing)
+- “Utlegg” (employee expenses)
+- Per-user task lists (e.g. Thomas/Marcus/Benjamin)
+
+Data model (3NF) required tables and relationships
+Implement Sequelize models + migrations + seeders. Enforce constraints at DB level.
+
+Tables:
+1) Roles(id, name UNIQUE)
+2) Users(id, name, email UNIQUE, phone, passwordHash, roleId FK->Roles, active default true, createdAt, updatedAt)
+3) VehicleStatuses(id, name UNIQUE, sortOrder)
+4) Locations(id, name UNIQUE)
+5) Vehicles(
+   id, stockNo, make, model, variant, year, regNo UNIQUE, vin UNIQUE,
+   color, mileage, source, buyPrice DECIMAL(10,2), listPrice DECIMAL(10,2),
+   statusId FK->VehicleStatuses, locationId FK->Locations, acquiredAt DATE,
+   createdAt, updatedAt
+)
+6) Photos(id, vehicleId FK->Vehicles, url, tag, createdAt, updatedAt)
+7) Tasks(
+   id, vehicleId NULL FK->Vehicles,
+   title, type, status ENUM('Open','InProgress','Done'),
+   priority ENUM('Low','Medium','High'),
+   dueAt DATETIME NULL,
+   assigneeId FK->Users,
+   createdById FK->Users,
+   createdAt, updatedAt
+)
+Indexes: Tasks(assigneeId,status,dueAt), Vehicles(statusId,createdAt)
+8) Vendors(id, name, phone, email, address, type)
+9) WorkOrders(
+   id, vehicleId FK->Vehicles, vendorId FK->Vendors,
+   type, bookedAt DATETIME NULL,
+   estCost DECIMAL(10,2) NULL, finalCost DECIMAL(10,2) NULL,
+   status ENUM('Draft','Approved','InProgress','Done','Cancelled'),
+   approvedById NULL FK->Users,
+   findings TEXT NULL,
+   createdAt, updatedAt
+)
+10) Inspections(
+   id, vehicleId FK->Vehicles,
+   provider ENUM('NAF') default 'NAF',
+   bookedAt DATETIME NULL,
+   result ENUM('Pending','Pass','Fail') default 'Pending',
+   reportUrl TEXT NULL,
+   notes TEXT NULL,
+   createdAt, updatedAt
+)
+11) Expenses(
+   id, vehicleId NULL FK->Vehicles,
+   userId FK->Users,
+   purpose TEXT,
+   amount DECIMAL(10,2),
+   status ENUM('Submitted','Approved','Rejected','Paid') default 'Submitted',
+   docUrl TEXT NULL,
+   approvedById NULL FK->Users,
+   createdAt, updatedAt
+)
+12) Sales(
+   id, vehicleId FK->Vehicles UNIQUE,
+   sellerId FK->Users,
+   buyerName, buyerPhone,
+   deposit DECIMAL(10,2) NULL,
+   salePrice DECIMAL(10,2),
+   soldAt DATETIME,
+   deliveryAt DATETIME NULL,
+   notes TEXT NULL,
+   createdAt, updatedAt
+)
+Optional:
+13) AuditLogs(id, entity, entityId, action, userId, diff JSON, createdAt)
+
+Business rules to implement
+- Status lifecycle: Intake → Klargjøring → NAF → Listed → Reserved → Sold → Delivered → AfterSale.
+- When Vehicle status changes to “Klargjøring”, auto-create default tasks (cleaning, photos, minor fixes) assigned to a “Klargjører” if one exists, else leave unassigned.
+- Only Admin can: manage users and roles, approve expenses, approve work orders, change sale/delivery state.
+- Sellers can: create vehicles (intake), create tasks, create sales, schedule test drives tasks, mark their tasks done.
+- Klargjører can: update tasks, upload photos, move vehicle from Klargjøring to NAF/Listed as allowed.
+- No one can delete vehicles hard-delete. Use soft delete if you implement deletion (deletedAt).
+- Search endpoint must support partial matches across make/model/variant/regNo/vin and return pagination (page, pageSize=10, total, rows). Use parameterized raw SQL to avoid injection.
+
+API endpoints (REST) required
+Auth:
+- POST /api/auth/register (admin-only or initial seed admin only; pick one)
+- POST /api/auth/login returns {token}
+Users (Admin only):
+- GET /api/users
+- POST /api/users
+- PUT /api/users/:id
+- PUT /api/users/:id/role
+- POST /api/users/:id/reset-password
+Vehicles:
+- GET /api/vehicles?statusId=&q=&page=
+- GET /api/vehicles/:id (include status, location, tasks, photos)
+- POST /api/vehicles
+- PUT /api/vehicles/:id
+- PUT /api/vehicles/:id/status
+- POST /api/vehicles/:id/photos (multer upload or URL attach)
+Tasks:
+- GET /api/tasks?my=1&status=&page=
+- POST /api/tasks
+- PUT /api/tasks/:id
+- PUT /api/tasks/:id/status
+Vendors:
+- CRUD /api/vendors
+WorkOrders:
+- CRUD /api/workorders
+- POST /api/workorders/:id/approve (admin)
+Inspections:
+- CRUD /api/inspections
+- PUT /api/inspections/:id/result
+Expenses:
+- CRUD /api/expenses
+- POST /api/expenses/:id/approve (admin)
+Sales:
+- POST /api/sales (creates sale, sets vehicle status to Sold)
+- PUT /api/sales/:id/deliver (admin or seller, sets Delivered)
+Search:
+- POST /api/search { q, page } returns { total, page, pageSize, rows }
+Metrics:
+- GET /api/metrics/summary?from=&to= returns counts (intake/listed/sold), avg days-in-stock, overdue tasks
+
+Swagger
+- Generate swagger.yaml with schemas for all endpoints, bearerAuth security, and examples.
+
+Frontend pages required (simple but usable)
+All pages require login.
+- /login (email + password)
+- /dashboard (tiles: cars by status, overdue tasks, today’s tasks)
+- /vehicles (table with filters q/status, pagination)
+- /vehicles/:id (details + photos + tasks + status changer)
+- /tasks (my tasks list with status toggles, pagination)
+- /admin/users (admin only: list/create users, assign roles)
+
+UI requirements
+- Clean, readable. Use simple CSS. No design library required.
+- Tables must be sortable by clicking headers (basic JS).
+- Forms validate before submit, show API error messages.
+
+Project structure
+/api
+  src/config/config.js (supports dev/prod, SSL option)
+  src/utils/db.js
+  src/models
+  src/migrations
+  src/seeders (seed Roles, VehicleStatuses, Locations, and one Admin user)
+  src/middleware (auth, rbac, validate, error)
+  src/routes (one file per resource)
+  src/services (business logic like status change hooks)
+  swagger.yaml
+/web
+  server.js (or static) and pages/templates
+  public/ css/js
+
+Testing
+- Jest + supertest tests for: login, RBAC denial, vehicle create/list, task create/list, search pagination.
+- Provide npm scripts: dev, test, migrate, seed, reset.
+
+Local dev
+- Docker compose: mysql with volume, api, web.
+- Provide README with exact commands.
+
+Deliverable
+- Generate all code files with correct imports and working wiring.
+- Ensure `npm run dev` boots API and web, and seed creates an admin user with printed credentials.
+- Ensure DB migrations run clean on empty DB.
+- Ensure all endpoints return consistent JSON errors: { error, message, details? }.
+
+After generating the project:
+- Provide a short “Setup” section (commands).
+- Provide a “Cloud DB” section explaining how to set DB_HOST/DB_USER/DB_PASS/DB_SSL for a managed MySQL and how to connect with DBeaver.

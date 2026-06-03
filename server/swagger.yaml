@@ -1,0 +1,138 @@
+openapi: 3.0.0
+info:
+  title: Motio API
+  version: 1.0.0
+  description: API for Motio Car Dealership Logistics
+servers:
+  - url: /api
+components:
+  securitySchemes:
+    cookieAuth:
+      type: apiKey
+      in: cookie
+      name: connect.sid
+  schemas:
+    User:
+      type: object
+      properties:
+        id:
+          type: integer
+        name:
+          type: string
+        email:
+          type: string
+        roleId:
+          type: integer
+    Vehicle:
+      type: object
+      properties:
+        id:
+          type: integer
+        make:
+          type: string
+        model:
+          type: string
+        statusId:
+          type: integer
+    Task:
+      type: object
+      properties:
+        id:
+          type: integer
+        title:
+          type: string
+        status:
+          type: string
+          enum: [Open, InProgress, Done]
+security:
+  - cookieAuth: []
+paths:
+  /auth/login:
+    post:
+      summary: Login
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                username:
+                  type: string
+                password:
+                  type: string
+      responses:
+        200:
+          description: OK
+  /vehicles:
+    get:
+      summary: List vehicles
+      parameters:
+        - name: statusId
+          in: query
+          schema:
+            type: integer
+        - name: q
+          in: query
+          schema:
+            type: string
+        - name: page
+          in: query
+          schema:
+            type: integer
+      responses:
+        200:
+          description: List of vehicles
+    post:
+      summary: Create vehicle
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/Vehicle'
+      responses:
+        201:
+          description: Created
+  /vehicles/{id}:
+    get:
+      summary: Get vehicle details
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        200:
+          description: Vehicle details
+    put:
+      summary: Update vehicle
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/Vehicle'
+      responses:
+        200:
+          description: Updated
+  /tasks:
+    get:
+      summary: List tasks
+      responses:
+        200:
+          description: List of tasks
+    post:
+      summary: Create task
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/Task'
+      responses:
+        201:
+          description: Created
