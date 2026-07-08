@@ -1,6 +1,7 @@
 import { useState } from "react";
 import { LayoutShell } from "@/components/layout-shell";
 import { useVehicles, useStatuses, useCreateVehicle, useLocations, useUsers } from "@/hooks/use-vehicles";
+import { useToast } from "@/hooks/use-toast";
 import { VehicleCard } from "@/components/vehicle-card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -117,6 +118,7 @@ function CreateVehicleDialog({ open, onOpenChange }: { open: boolean, onOpenChan
   const { data: locations } = useLocations();
   const { data: usersList } = useUsers();
   const { user } = useAuth();
+  const { toast } = useToast();
 
   const form = useForm<z.infer<typeof insertVehicleSchema>>({
     resolver: zodResolver(insertVehicleSchema),
@@ -135,25 +137,26 @@ function CreateVehicleDialog({ open, onOpenChange }: { open: boolean, onOpenChan
 
   async function onSubmit(data: z.infer<typeof insertVehicleSchema>) {
     try {
-      // Set default status to first one (Intake) if not set
       if (!data.statusId && statuses?.[0]) {
         data.statusId = statuses[0].id;
       }
-      // Set default location if available
       if (!data.locationId && locations?.[0]) {
         data.locationId = locations[0].id;
       }
-      
-      // Ensure mileage is a number
-      if (typeof data.mileage === 'string') {
+      if (typeof data.mileage === "string") {
         data.mileage = parseInt(data.mileage as any) || 0;
       }
-      
+
       await createVehicle(data);
+      toast({ title: "Kjøretøy lagt til", description: `${data.year} ${data.make} ${data.model} er lagt til i beholdningen.` });
       onOpenChange(false);
       form.reset();
-    } catch (error) {
-      console.error("Vehicle creation error:", error);
+    } catch (error: any) {
+      toast({
+        title: "Kunne ikke legge til kjøretøy",
+        description: error?.message || "Noe gikk galt. Prøv igjen.",
+        variant: "destructive",
+      });
     }
   }
 
@@ -415,12 +418,16 @@ function CreateVehicleDialog({ open, onOpenChange }: { open: boolean, onOpenChan
                     <FormLabel>Motorvolum (L)</FormLabel>
                     <FormControl>
                       <Input
-                        type="number"
-                        step="0.1"
+                        type="text"
+                        inputMode="decimal"
                         placeholder="2.0"
                         {...field}
                         value={field.value ?? ""}
-                        onChange={e => field.onChange(e.target.value ? parseFloat(e.target.value) : null)}
+                        onChange={e => {
+                          // Allow only digits and a single decimal point
+                          const val = e.target.value.replace(/[^0-9.]/g, "").replace(/(\..*)\./g, "$1");
+                          field.onChange(val || null);
+                        }}
                       />
                     </FormControl>
                     <FormMessage />

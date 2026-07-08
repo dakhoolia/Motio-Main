@@ -79,7 +79,7 @@ export default function ContractsPage() {
           <div>
             <h1 className="text-[28px] font-bold text-foreground" style={{ fontFamily: "'Plus Jakarta Sans', sans-serif", letterSpacing: "-0.03em" }}>Kontrakter</h1>
             <p className="text-sm text-muted-foreground mt-0.5">
-              Innkjøps- og salgskontrakter med BankID-signering
+              Innkjøps- og salgskontrakter med simulert signering
             </p>
           </div>
           <div className="flex gap-2">

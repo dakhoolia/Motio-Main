@@ -8,10 +8,11 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from "@/components/ui/form";
 import { Loader2, Shield } from "lucide-react";
+import { passwordSchema } from "@shared/schema";
 
 const changePasswordSchema = z.object({
-  newPassword: z.string().min(4, "Password must be at least 4 characters"),
-  confirmPassword: z.string().min(4, "Please confirm your password"),
+  newPassword: passwordSchema,
+  confirmPassword: z.string().min(1, "Please confirm your password"),
 }).refine((data) => data.newPassword === data.confirmPassword, {
   message: "Passwords don't match",
   path: ["confirmPassword"],

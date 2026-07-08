@@ -95,7 +95,7 @@ MERKNADER
 {{notes}}
 
 ---
-Partene bekrefter med sin BankID-signatur at ovenstående er korrekt.`;
+Partene bekrefter med sin signatur at ovenstående er korrekt.`;
 
 export default function ContractTemplatesPage() {
   const { roleName } = useAuth();

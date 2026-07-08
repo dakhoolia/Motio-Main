@@ -38,6 +38,7 @@ export function useCreateVehicle() {
       const res = await fetch(api.vehicles.create.path, {
         method: api.vehicles.create.method,
         headers: { "Content-Type": "application/json" },
+        credentials: "include",
         body: JSON.stringify(data),
       });
       if (!res.ok) throw new Error("Failed to create vehicle");

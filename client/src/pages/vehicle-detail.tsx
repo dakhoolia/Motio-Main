@@ -1,7 +1,7 @@
 import { useState, useEffect, useRef } from "react";
 import { useRoute } from "wouter";
 import { useQuery, useMutation } from "@tanstack/react-query";
-import { useVehicle, useUpdateVehicle, useStatuses, useUsers } from "@/hooks/use-vehicles";
+import { useVehicle, useUpdateVehicle, useStatuses, useUsers, useLocations } from "@/hooks/use-vehicles";
 import { useCreateTask } from "@/hooks/use-tasks";
 import { useCreateSale } from "@/hooks/use-sales";
 import { useAuth } from "@/hooks/use-auth";
@@ -23,7 +23,7 @@ import { Form, FormField, FormItem, FormLabel, FormControl, FormMessage, FormDes
 import { Input } from "@/components/ui/input";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
-import { insertTaskSchema, ROLE_NAMES, type Photo } from "@shared/schema";
+import { insertTaskSchema, insertVehicleSchema, ROLE_NAMES, type Photo } from "@shared/schema";
 import { z } from "zod";
 import { queryClient, apiRequest } from "@/lib/queryClient";
 import { api } from "@shared/routes";
@@ -40,6 +40,7 @@ export default function VehicleDetailPage() {
   const { data: statuses } = useStatuses();
   const [soldDialogOpen, setSoldDialogOpen] = useState(false);
   const [pendingStatusId, setPendingStatusId] = useState<number | null>(null);
+  const [editDialogOpen, setEditDialogOpen] = useState(false);
 
   const canEditVehicle = roleName && [ROLE_NAMES.ADMIN, ROLE_NAMES.HYBRID, ROLE_NAMES.INNKJOPER].includes(roleName as any);
   const canSellVehicle = roleName && [ROLE_NAMES.ADMIN, ROLE_NAMES.HYBRID, ROLE_NAMES.SELGER].includes(roleName as any);
@@ -48,6 +49,10 @@ export default function VehicleDetailPage() {
 
   const { toast } = useToast();
   const photoInputRef = useRef<HTMLInputElement>(null);
+  const [activeTab, setActiveTab] = useState("overview");
+  const [taskDialogOpen, setTaskDialogOpen] = useState(false);
+
+  const triggerPhotoUpload = () => photoInputRef.current?.click();
 
   const { data: photoList = [] } = useQuery<Photo[]>({
     queryKey: ["/api/vehicles", id, "photos"],
@@ -192,7 +197,7 @@ export default function VehicleDetailPage() {
                 </Select>
               )}
               {canEditVehicle && (
-                <Button size="lg" className="h-11 shadow-lg shadow-primary/20" data-testid="button-edit-vehicle">
+                <Button size="lg" className="h-11 shadow-lg shadow-primary/20" data-testid="button-edit-vehicle" onClick={() => setEditDialogOpen(true)}>
                   <Edit className="mr-2 h-4 w-4" /> Edit
                 </Button>
               )}
@@ -200,11 +205,26 @@ export default function VehicleDetailPage() {
           </div>
         </div>
 
+        {/* Hidden file input — kept outside tabs so ref is always in DOM */}
+        <input
+          ref={photoInputRef}
+          type="file"
+          accept="image/*"
+          multiple
+          className="hidden"
+          onChange={(e) => {
+            const files = Array.from(e.target.files ?? []);
+            files.forEach(f => uploadPhotoMutation.mutate(f));
+            e.target.value = "";
+            setActiveTab("photos");
+          }}
+        />
+
         {/* Main Content */}
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
           {/* Left Column - Details */}
           <div className="lg:col-span-2 space-y-8">
-            <Tabs defaultValue="overview" className="w-full">
+            <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full">
               <TabsList className="w-full justify-start h-12 bg-muted/50 p-1 rounded-xl">
                 <TabsTrigger value="overview" className="rounded-lg data-[state=active]:bg-white data-[state=active]:shadow-sm">Overview</TabsTrigger>
                 <TabsTrigger value="tasks" className="rounded-lg data-[state=active]:bg-white data-[state=active]:shadow-sm">Tasks & Work</TabsTrigger>
@@ -299,7 +319,12 @@ export default function VehicleDetailPage() {
                       <CardTitle>Aktive oppgaver</CardTitle>
                       <CardDescription>Vedlikeholds- og klargjøringsarbeid</CardDescription>
                     </div>
-                    <CreateVehicleTaskDialog vehicleId={id} vehicleName={`${vehicle.year} ${vehicle.make} ${vehicle.model}`} />
+                    <CreateVehicleTaskDialog
+                      vehicleId={id}
+                      vehicleName={`${vehicle.year} ${vehicle.make} ${vehicle.model}`}
+                      externalOpen={taskDialogOpen}
+                      onExternalOpenChange={setTaskDialogOpen}
+                    />
                   </CardHeader>
                   <CardContent>
                     {vehicle.tasks && vehicle.tasks.length > 0 ? (
@@ -335,34 +360,19 @@ export default function VehicleDetailPage() {
                       <CardTitle>Bilder</CardTitle>
                       <CardDescription>Kjøretøybilder for annonse og dokumentasjon</CardDescription>
                     </div>
-                    <div className="flex items-center gap-2">
-                      <input
-                        ref={photoInputRef}
-                        type="file"
-                        accept="image/*"
-                        multiple
-                        className="hidden"
-                        data-testid="input-photo-upload"
-                        onChange={(e) => {
-                          const files = Array.from(e.target.files ?? []);
-                          files.forEach(f => uploadPhotoMutation.mutate(f));
-                          e.target.value = "";
-                        }}
-                      />
-                      <Button
-                        onClick={() => photoInputRef.current?.click()}
-                        disabled={uploadPhotoMutation.isPending}
-                        data-testid="button-upload-photo"
-                        size="sm"
-                      >
-                        {uploadPhotoMutation.isPending ? (
-                          <Loader2 className="h-4 w-4 mr-2 animate-spin" />
-                        ) : (
-                          <Upload className="h-4 w-4 mr-2" />
-                        )}
-                        Last opp
-                      </Button>
-                    </div>
+                    <Button
+                      onClick={triggerPhotoUpload}
+                      disabled={uploadPhotoMutation.isPending}
+                      data-testid="button-upload-photo"
+                      size="sm"
+                    >
+                      {uploadPhotoMutation.isPending ? (
+                        <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                      ) : (
+                        <Upload className="h-4 w-4 mr-2" />
+                      )}
+                      Last opp
+                    </Button>
                   </CardHeader>
                   <CardContent>
                     {photoList.length === 0 ? (
@@ -439,7 +449,8 @@ export default function VehicleDetailPage() {
                 <Button
                   variant="outline"
                   className="w-full"
-                  onClick={() => photoInputRef.current?.click()}
+                  onClick={triggerPhotoUpload}
+                  disabled={uploadPhotoMutation.isPending}
                   data-testid="button-upload-photo-shortcut"
                 >
                   <Camera className="h-4 w-4 mr-2" />
@@ -457,13 +468,31 @@ export default function VehicleDetailPage() {
               </CardHeader>
               <CardContent className="space-y-2">
                 {canEditVehicle && (
-                  <Button className="w-full justify-start" variant="secondary" data-testid="button-create-work-order">Opprett arbeidsordre</Button>
+                  <Button
+                    className="w-full justify-start" variant="secondary"
+                    data-testid="button-create-work-order"
+                    onClick={() => { setActiveTab("tasks"); setTaskDialogOpen(true); }}
+                  >
+                    Opprett arbeidsordre
+                  </Button>
                 )}
                 {canEditVehicle && (
-                  <Button className="w-full justify-start" variant="secondary" data-testid="button-schedule-inspection">Planlegg inspeksjon</Button>
+                  <Button
+                    className="w-full justify-start" variant="secondary"
+                    data-testid="button-schedule-inspection"
+                    onClick={() => { setActiveTab("tasks"); setTaskDialogOpen(true); }}
+                  >
+                    Planlegg inspeksjon
+                  </Button>
                 )}
                 {canSellVehicle && (
-                  <Button className="w-full justify-start" variant="secondary" data-testid="button-mark-sold">Merk som solgt</Button>
+                  <Button
+                    className="w-full justify-start" variant="secondary"
+                    data-testid="button-mark-sold"
+                    onClick={() => setSoldDialogOpen(true)}
+                  >
+                    Merk som solgt
+                  </Button>
                 )}
               </CardContent>
             </Card>
@@ -541,16 +570,22 @@ export default function VehicleDetailPage() {
       </div>
       
       {/* Sold Dialog */}
-      <SoldDialog 
-        open={soldDialogOpen} 
+      <SoldDialog
+        open={soldDialogOpen}
         onOpenChange={(open) => {
-          if (!open) {
-            setPendingStatusId(null);
-          }
+          if (!open) setPendingStatusId(null);
           setSoldDialogOpen(open);
         }}
         vehicle={vehicle}
         onConfirm={handleSoldConfirmed}
+      />
+
+      {/* Edit Dialog */}
+      <EditVehicleDialog
+        open={editDialogOpen}
+        onOpenChange={setEditDialogOpen}
+        vehicle={vehicle}
+        vehicleId={id}
       />
     </LayoutShell>
   );
@@ -568,8 +603,20 @@ function DetailItem({ icon: Icon, label, value }: any) {
   );
 }
 
-function CreateVehicleTaskDialog({ vehicleId, vehicleName }: { vehicleId: number; vehicleName: string }) {
-  const [open, setOpen] = useState(false);
+function CreateVehicleTaskDialog({
+  vehicleId,
+  vehicleName,
+  externalOpen,
+  onExternalOpenChange,
+}: {
+  vehicleId: number;
+  vehicleName: string;
+  externalOpen?: boolean;
+  onExternalOpenChange?: (open: boolean) => void;
+}) {
+  const [internalOpen, setInternalOpen] = useState(false);
+  const open = externalOpen ?? internalOpen;
+  const setOpen = (v: boolean) => { setInternalOpen(v); onExternalOpenChange?.(v); };
   const { mutateAsync: createTask, isPending } = useCreateTask();
 
   const form = useForm<z.infer<typeof insertTaskSchema>>({
@@ -893,6 +940,312 @@ function SoldDialog({
               <Button type="submit" disabled={isPending} data-testid="button-confirm-sale">
                 {isPending && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
                 Confirm Sale
+              </Button>
+            </DialogFooter>
+          </form>
+        </Form>
+      </DialogContent>
+    </Dialog>
+  );
+}
+
+// ── Edit Vehicle Dialog ────────────────────────────────────────────────────────
+
+function EditVehicleDialog({
+  open,
+  onOpenChange,
+  vehicle,
+  vehicleId,
+}: {
+  open: boolean;
+  onOpenChange: (open: boolean) => void;
+  vehicle: any;
+  vehicleId: number;
+}) {
+  const { mutateAsync: updateVehicle, isPending } = useUpdateVehicle();
+  const { data: locations } = useLocations();
+  const { toast } = useToast();
+
+  const form = useForm<z.infer<typeof insertVehicleSchema>>({
+    resolver: zodResolver(insertVehicleSchema),
+  });
+
+  // Reset form whenever the dialog opens with the current vehicle values
+  useEffect(() => {
+    if (open && vehicle) {
+      form.reset({
+        make: vehicle.make ?? "",
+        model: vehicle.model ?? "",
+        year: vehicle.year,
+        variant: vehicle.variant ?? "",
+        color: vehicle.color ?? "",
+        regNo: vehicle.regNo ?? "",
+        vin: vehicle.vin ?? "",
+        mileage: vehicle.mileage ?? 0,
+        buyPrice: vehicle.buyPrice ? String(vehicle.buyPrice) : "",
+        listPrice: vehicle.listPrice ? String(vehicle.listPrice) : "",
+        fuelType: vehicle.fuelType ?? "",
+        transmission: vehicle.transmission ?? "",
+        bodyType: vehicle.bodyType ?? "",
+        driveType: vehicle.driveType ?? "",
+        engineSize: vehicle.engineSize ?? "",
+        horsepower: vehicle.horsepower ?? undefined,
+        description: vehicle.description ?? "",
+        locationId: vehicle.locationId ?? undefined,
+      });
+    }
+  }, [open, vehicle]);
+
+  async function onSubmit(data: z.infer<typeof insertVehicleSchema>) {
+    try {
+      await updateVehicle({ id: vehicleId, ...data });
+      toast({ title: "Kjøretøy oppdatert" });
+      onOpenChange(false);
+    } catch {
+      toast({ title: "Kunne ikke oppdatere", variant: "destructive" });
+    }
+  }
+
+  return (
+    <Dialog open={open} onOpenChange={onOpenChange}>
+      <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto">
+        <DialogHeader>
+          <DialogTitle>Rediger kjøretøy</DialogTitle>
+          <DialogDescription>
+            Oppdater informasjonen for {vehicle?.year} {vehicle?.make} {vehicle?.model}
+          </DialogDescription>
+        </DialogHeader>
+
+        <Form {...form}>
+          <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-6 pt-2">
+            <div className="grid grid-cols-2 gap-4">
+              {/* Make */}
+              <FormField control={form.control} name="make" render={({ field }) => (
+                <FormItem>
+                  <FormLabel>Merke</FormLabel>
+                  <FormControl><Input placeholder="BMW" {...field} /></FormControl>
+                  <FormMessage />
+                </FormItem>
+              )} />
+              {/* Model */}
+              <FormField control={form.control} name="model" render={({ field }) => (
+                <FormItem>
+                  <FormLabel>Modell</FormLabel>
+                  <FormControl><Input placeholder="X5" {...field} /></FormControl>
+                  <FormMessage />
+                </FormItem>
+              )} />
+              {/* Year */}
+              <FormField control={form.control} name="year" render={({ field }) => (
+                <FormItem>
+                  <FormLabel>Årsmodell</FormLabel>
+                  <FormControl>
+                    <Input type="number" {...field} onChange={e => field.onChange(parseInt(e.target.value))} />
+                  </FormControl>
+                  <FormMessage />
+                </FormItem>
+              )} />
+              {/* Variant */}
+              <FormField control={form.control} name="variant" render={({ field }) => (
+                <FormItem>
+                  <FormLabel>Variant</FormLabel>
+                  <FormControl><Input placeholder="xDrive40i M Sport" {...field} value={field.value ?? ""} /></FormControl>
+                  <FormMessage />
+                </FormItem>
+              )} />
+              {/* Reg No */}
+              <FormField control={form.control} name="regNo" render={({ field }) => (
+                <FormItem>
+                  <FormLabel>Regnr</FormLabel>
+                  <FormControl><Input placeholder="AB12345" {...field} value={field.value ?? ""} /></FormControl>
+                  <FormMessage />
+                </FormItem>
+              )} />
+              {/* Color */}
+              <FormField control={form.control} name="color" render={({ field }) => (
+                <FormItem>
+                  <FormLabel>Farge</FormLabel>
+                  <FormControl><Input placeholder="Svart, Hvit, Sølv..." {...field} value={field.value ?? ""} /></FormControl>
+                  <FormMessage />
+                </FormItem>
+              )} />
+              {/* VIN */}
+              <FormField control={form.control} name="vin" render={({ field }) => (
+                <FormItem>
+                  <FormLabel>VIN</FormLabel>
+                  <FormControl><Input placeholder="WBAFW71050L..." {...field} value={field.value ?? ""} /></FormControl>
+                  <FormMessage />
+                </FormItem>
+              )} />
+              {/* Mileage */}
+              <FormField control={form.control} name="mileage" render={({ field }) => (
+                <FormItem>
+                  <FormLabel>Kilometerstand (km)</FormLabel>
+                  <FormControl>
+                    <Input
+                      type="text" inputMode="numeric" placeholder="0"
+                      {...field} value={field.value ?? ""}
+                      onChange={e => {
+                        const val = e.target.value.replace(/[^0-9]/g, "");
+                        field.onChange(val ? parseInt(val) : 0);
+                      }}
+                    />
+                  </FormControl>
+                  <FormMessage />
+                </FormItem>
+              )} />
+              {/* Buy Price */}
+              <FormField control={form.control} name="buyPrice" render={({ field }) => (
+                <FormItem>
+                  <FormLabel>Innkjøpspris (kr)</FormLabel>
+                  <FormControl>
+                    <Input
+                      type="text" inputMode="numeric" placeholder="0"
+                      {...field} value={field.value ?? ""}
+                      onChange={e => field.onChange(e.target.value.replace(/[^0-9]/g, ""))}
+                    />
+                  </FormControl>
+                  <FormMessage />
+                </FormItem>
+              )} />
+              {/* List Price */}
+              <FormField control={form.control} name="listPrice" render={({ field }) => (
+                <FormItem>
+                  <FormLabel>Salgspris (kr)</FormLabel>
+                  <FormControl>
+                    <Input
+                      type="text" inputMode="numeric" placeholder="0"
+                      {...field} value={field.value ?? ""}
+                      onChange={e => field.onChange(e.target.value.replace(/[^0-9]/g, ""))}
+                    />
+                  </FormControl>
+                  <FormMessage />
+                </FormItem>
+              )} />
+              {/* Fuel Type */}
+              <FormField control={form.control} name="fuelType" render={({ field }) => (
+                <FormItem>
+                  <FormLabel>Drivstoff</FormLabel>
+                  <Select onValueChange={field.onChange} value={field.value ?? ""}>
+                    <FormControl><SelectTrigger><SelectValue placeholder="Velg drivstoff" /></SelectTrigger></FormControl>
+                    <SelectContent>
+                      {["Bensin","Diesel","Elektrisk","Hybrid","Plug-in hybrid","Hydrogen"].map(f => (
+                        <SelectItem key={f} value={f}>{f}</SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                  <FormMessage />
+                </FormItem>
+              )} />
+              {/* Transmission */}
+              <FormField control={form.control} name="transmission" render={({ field }) => (
+                <FormItem>
+                  <FormLabel>Girkasse</FormLabel>
+                  <Select onValueChange={field.onChange} value={field.value ?? ""}>
+                    <FormControl><SelectTrigger><SelectValue placeholder="Velg girkasse" /></SelectTrigger></FormControl>
+                    <SelectContent>
+                      {["Manuell","Automat","Semi-automat","CVT"].map(t => (
+                        <SelectItem key={t} value={t}>{t}</SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                  <FormMessage />
+                </FormItem>
+              )} />
+              {/* Body Type */}
+              <FormField control={form.control} name="bodyType" render={({ field }) => (
+                <FormItem>
+                  <FormLabel>Karosseri</FormLabel>
+                  <Select onValueChange={field.onChange} value={field.value ?? ""}>
+                    <FormControl><SelectTrigger><SelectValue placeholder="Velg karosseri" /></SelectTrigger></FormControl>
+                    <SelectContent>
+                      {["Sedan","SUV","Stasjonsvogn","Kombi","Cabriolet","Coupé","Varebil","MPV","Pickup"].map(b => (
+                        <SelectItem key={b} value={b}>{b}</SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                  <FormMessage />
+                </FormItem>
+              )} />
+              {/* Drive Type */}
+              <FormField control={form.control} name="driveType" render={({ field }) => (
+                <FormItem>
+                  <FormLabel>Hjuldrift</FormLabel>
+                  <Select onValueChange={field.onChange} value={field.value ?? ""}>
+                    <FormControl><SelectTrigger><SelectValue placeholder="Velg hjuldrift" /></SelectTrigger></FormControl>
+                    <SelectContent>
+                      {["Forhjulsdrift","Bakhjulsdrift","Firehjulsdrift (4WD)","Allhjulsdrift (AWD)"].map(d => (
+                        <SelectItem key={d} value={d}>{d}</SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                  <FormMessage />
+                </FormItem>
+              )} />
+              {/* Engine Size */}
+              <FormField control={form.control} name="engineSize" render={({ field }) => (
+                <FormItem>
+                  <FormLabel>Motorvolum (L)</FormLabel>
+                  <FormControl>
+                    <Input
+                      type="text" inputMode="decimal" placeholder="2.0"
+                      {...field} value={field.value ?? ""}
+                      onChange={e => {
+                        const val = e.target.value.replace(/[^0-9.]/g, "").replace(/(\..*)\./g, "$1");
+                        field.onChange(val || null);
+                      }}
+                    />
+                  </FormControl>
+                  <FormMessage />
+                </FormItem>
+              )} />
+              {/* Horsepower */}
+              <FormField control={form.control} name="horsepower" render={({ field }) => (
+                <FormItem>
+                  <FormLabel>Effekt (hk)</FormLabel>
+                  <FormControl>
+                    <Input
+                      type="number" placeholder="150"
+                      {...field} value={field.value ?? ""}
+                      onChange={e => field.onChange(e.target.value ? parseInt(e.target.value) : undefined)}
+                    />
+                  </FormControl>
+                  <FormMessage />
+                </FormItem>
+              )} />
+              {/* Location */}
+              <FormField control={form.control} name="locationId" render={({ field }) => (
+                <FormItem>
+                  <FormLabel>Sted</FormLabel>
+                  <Select onValueChange={v => field.onChange(parseInt(v))} value={field.value ? String(field.value) : ""}>
+                    <FormControl><SelectTrigger><SelectValue placeholder="Velg sted" /></SelectTrigger></FormControl>
+                    <SelectContent>
+                      {locations?.map((l: any) => (
+                        <SelectItem key={l.id} value={String(l.id)}>{l.name}</SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                  <FormMessage />
+                </FormItem>
+              )} />
+            </div>
+
+            {/* Description */}
+            <FormField control={form.control} name="description" render={({ field }) => (
+              <FormItem>
+                <FormLabel>Beskrivelse</FormLabel>
+                <FormControl>
+                  <Textarea rows={3} placeholder="Beskrivelse av bilen..." {...field} value={field.value ?? ""} />
+                </FormControl>
+                <FormMessage />
+              </FormItem>
+            )} />
+
+            <DialogFooter className="gap-2 pt-2 border-t">
+              <Button type="button" variant="outline" onClick={() => onOpenChange(false)}>Avbryt</Button>
+              <Button type="submit" disabled={isPending}>
+                {isPending && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
+                Lagre endringer
               </Button>
             </DialogFooter>
           </form>

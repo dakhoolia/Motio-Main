@@ -1,0 +1,63 @@
+config:
+  target: "http://localhost:5000"
+  phases:
+    - name: Warm up
+      duration: 30
+      arrivalRate: 5
+    - name: Ramp up
+      duration: 60
+      arrivalRate: 5
+      rampTo: 50
+    - name: Sustained load
+      duration: 60
+      arrivalRate: 50
+  defaults:
+    headers:
+      Content-Type: "application/json"
+
+scenarios:
+  - name: "Login - valid credentials"
+    weight: 3
+    flow:
+      - post:
+          url: "/api/auth/login"
+          json:
+            username: "admin"
+            password: "Admin1234!"
+          capture:
+            - json: "$.id"
+              as: userId
+          expect:
+            - statusCode: 200
+
+  - name: "Login - invalid credentials (brute-force simulation)"
+    weight: 1
+    flow:
+      - post:
+          url: "/api/auth/login"
+          json:
+            username: "admin"
+            password: "wrongpassword"
+          expect:
+            - statusCode: 401
+
+  - name: "Authenticated vehicle list"
+    weight: 5
+    flow:
+      - post:
+          url: "/api/auth/login"
+          json:
+            username: "admin"
+            password: "Admin1234!"
+      - get:
+          url: "/api/vehicles"
+          expect:
+            - statusCode: 200
+
+  - name: "Showroom (public)"
+    weight: 4
+    flow:
+      - get:
+          url: "/api/showroom"
+          expect:
+            - statusCode: 200

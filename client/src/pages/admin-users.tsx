@@ -13,10 +13,10 @@ import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
-import { Loader2, Plus, UserPlus, RotateCcw, UserX, UserCheck } from "lucide-react";
+import { Loader2, Plus, UserPlus, RotateCcw, UserX, UserCheck, ShieldOff } from "lucide-react";
 import { apiRequest, queryClient as qc } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
-import type { Role } from "@shared/schema";
+import { passwordSchema, type Role } from "@shared/schema";
 
 const createUserSchema = z.object({
   username: z.string().min(2, "Username must be at least 2 characters"),
@@ -25,7 +25,7 @@ const createUserSchema = z.object({
   email: z.string().email("Invalid email"),
   phone: z.string().optional(),
   roleId: z.string().min(1, "Role is required"),
-  password: z.string().min(4, "Password must be at least 4 characters"),
+  password: passwordSchema,
   confirmPassword: z.string().min(1, "Please confirm the password"),
 }).refine((data) => data.password === data.confirmPassword, {
   message: "Passwords don't match",
@@ -33,7 +33,7 @@ const createUserSchema = z.object({
 });
 
 const resetPasswordSchema = z.object({
-  newPassword: z.string().min(4, "Password must be at least 4 characters"),
+  newPassword: passwordSchema,
 });
 
 export default function AdminUsersPage() {
@@ -101,6 +101,19 @@ export default function AdminUsersPage() {
     },
     onError: (err: any) => {
       toast({ title: "Failed to reset password", description: err.message, variant: "destructive" });
+    },
+  });
+
+  const resetMfaMutation = useMutation({
+    mutationFn: async (userId: number) => {
+      return apiRequest("PUT", `/api/users/${userId}/reset-mfa`);
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['/api/users'] });
+      toast({ title: "MFA nullstilt", description: "Brukeren kan logge inn uten kode og sette opp MFA på nytt." });
+    },
+    onError: (err: any) => {
+      toast({ title: "Kunne ikke nullstille MFA", description: err.message, variant: "destructive" });
     },
   });
 
@@ -345,6 +358,21 @@ export default function AdminUsersPage() {
                           >
                             <RotateCcw className="h-4 w-4" />
                           </Button>
+                          {u.totpEnabled && (
+                            <Button
+                              variant="ghost"
+                              size="icon"
+                              onClick={() => {
+                                if (confirm(`Nullstille MFA for ${u.firstName} ${u.lastName}? Brukeren kan da logge inn uten kode.`)) {
+                                  resetMfaMutation.mutate(u.id);
+                                }
+                              }}
+                              title="Nullstill MFA"
+                              data-testid={`button-reset-mfa-${u.id}`}
+                            >
+                              <ShieldOff className="h-4 w-4 text-amber-600" />
+                            </Button>
+                          )}
                           {u.isActive ? (
                             <Button
                               variant="ghost"

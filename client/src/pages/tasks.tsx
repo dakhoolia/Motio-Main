@@ -2,13 +2,14 @@ import { useState } from "react";
 import { Link } from "wouter";
 import { LayoutShell } from "@/components/layout-shell";
 import { useTasks, useCreateTask, useUpdateTask } from "@/hooks/use-tasks";
+import { useAuth } from "@/hooks/use-auth";
 import { Button } from "@/components/ui/button";
-import { Loader2, Plus, CheckCircle2, Clock, ExternalLink, GripVertical } from "lucide-react";
+import { Loader2, Plus, CheckCircle2, Clock, ExternalLink, GripVertical, Sparkles } from "lucide-react";
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
 import { useForm } from "react-hook-form";
 import { z } from "zod";
 import { zodResolver } from "@hookform/resolvers/zod";
-import { insertTaskSchema } from "@shared/schema";
+import { insertTaskSchema, ROLE_NAMES } from "@shared/schema";
 import { Form, FormField, FormItem, FormLabel, FormControl, FormMessage } from "@/components/ui/form";
 import { Input } from "@/components/ui/input";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
@@ -32,17 +33,29 @@ import {
 import { CSS } from "@dnd-kit/utilities";
 
 const COLUMNS = [
-  { id: "Open",       label: "To Do",       color: "bg-blue-500",   border: "border-blue-400/60 dark:border-blue-500/40",   pill: "bg-blue-50 text-blue-600 dark:bg-blue-950/40 dark:text-blue-400"   },
-  { id: "InProgress", label: "In Progress", color: "bg-amber-500",  border: "border-amber-400/60 dark:border-amber-500/40",  pill: "bg-amber-50 text-amber-600 dark:bg-amber-950/40 dark:text-amber-400" },
+  { id: "Open",       label: "To Do",       color: "bg-blue-500",    border: "border-blue-400/60 dark:border-blue-500/40",    pill: "bg-blue-50 text-blue-600 dark:bg-blue-950/40 dark:text-blue-400"   },
+  { id: "InProgress", label: "In Progress", color: "bg-amber-500",   border: "border-amber-400/60 dark:border-amber-500/40",  pill: "bg-amber-50 text-amber-600 dark:bg-amber-950/40 dark:text-amber-400" },
   { id: "Done",       label: "Done",        color: "bg-emerald-500", border: "border-emerald-400/60 dark:border-emerald-500/40", pill: "bg-emerald-50 text-emerald-600 dark:bg-emerald-950/40 dark:text-emerald-400" },
 ];
+
+/** Sort tasks oldest-first by createdAt */
+function sortOldestFirst(tasks: any[]) {
+  return [...tasks].sort((a, b) => {
+    const da = a.createdAt ? new Date(a.createdAt).getTime() : 0;
+    const db = b.createdAt ? new Date(b.createdAt).getTime() : 0;
+    return da - db;
+  });
+}
 
 export default function TasksPage() {
   const [isCreateOpen, setIsCreateOpen] = useState(false);
   const { data: tasks, isLoading } = useTasks();
   const { mutate: updateTask } = useUpdateTask();
+  const { roleName } = useAuth();
   const [activeId, setActiveId] = useState<number | null>(null);
   const [overId, setOverId] = useState<string | null>(null);
+
+  const isKlargjorer = roleName === ROLE_NAMES.KLARGJORER;
 
   const sensors = useSensors(
     useSensor(PointerSensor, { activationConstraint: { distance: 6 } })
@@ -58,7 +71,7 @@ export default function TasksPage() {
     );
   }
 
-  const taskList = tasks || [];
+  const taskList = sortOldestFirst(tasks || []);
   const activeTask = activeId ? taskList.find(t => t.id === activeId) : null;
 
   function handleDragStart(event: DragStartEvent) {
@@ -108,7 +121,11 @@ export default function TasksPage() {
         <div className="flex justify-between items-center">
           <div>
             <h1 className="text-3xl font-display font-bold text-foreground">Tasks</h1>
-            <p className="text-muted-foreground mt-1">Drag cards between columns to update status</p>
+            <p className="text-muted-foreground mt-1">
+              {isKlargjorer
+                ? "Rengjøringsoppgaver vises øverst, sortert eldst–nyest"
+                : "Drag cards between columns to update status"}
+            </p>
           </div>
           <CreateTaskDialog open={isCreateOpen} onOpenChange={setIsCreateOpen} />
         </div>
@@ -123,6 +140,7 @@ export default function TasksPage() {
             {COLUMNS.map(col => {
               const colTasks = taskList.filter(t => t.status === col.id);
               const isDropTarget = overId === col.id && activeId !== null;
+
               return (
                 <KanbanColumn
                   key={col.id}
@@ -130,6 +148,7 @@ export default function TasksPage() {
                   tasks={colTasks}
                   isDropTarget={isDropTarget}
                   activeId={activeId}
+                  isKlargjorer={isKlargjorer}
                   onStatusChange={(id, status) => updateTask({ id, status: status as any })}
                 />
               );
@@ -147,14 +166,18 @@ export default function TasksPage() {
   );
 }
 
-function KanbanColumn({ col, tasks, isDropTarget, activeId, onStatusChange }: {
+function KanbanColumn({ col, tasks, isDropTarget, activeId, isKlargjorer, onStatusChange }: {
   col: typeof COLUMNS[0];
   tasks: any[];
   isDropTarget: boolean;
   activeId: number | null;
+  isKlargjorer: boolean;
   onStatusChange: (id: number, status: string) => void;
 }) {
   const { setNodeRef } = useDroppable({ id: col.id });
+
+  const cleaningTasks = isKlargjorer ? tasks.filter(t => t.type === "Cleaning") : [];
+  const otherTasks    = isKlargjorer ? tasks.filter(t => t.type !== "Cleaning") : tasks;
 
   return (
     <div
@@ -165,6 +188,7 @@ function KanbanColumn({ col, tasks, isDropTarget, activeId, onStatusChange }: {
           : "border-black/[0.07] dark:border-white/[0.10]"
       }`}
     >
+      {/* Column header */}
       <div className="flex items-center gap-2 mb-4">
         <div className={`w-2.5 h-2.5 rounded-full ${col.color}`} />
         <h3 className="font-semibold text-[13px] text-foreground">{col.label}</h3>
@@ -175,7 +199,47 @@ function KanbanColumn({ col, tasks, isDropTarget, activeId, onStatusChange }: {
 
       <SortableContext items={tasks.map(t => t.id)} strategy={verticalListSortingStrategy}>
         <div className="flex flex-col gap-2.5 flex-1">
-          {tasks.map(task => (
+
+          {/* ── Klargjører view: Cleaning section first ── */}
+          {isKlargjorer && (
+            <>
+              <div className="flex items-center gap-1.5 mb-1">
+                <Sparkles className="h-3.5 w-3.5 text-sky-500 shrink-0" />
+                <span className="text-[11px] font-semibold text-sky-600 dark:text-sky-400 uppercase tracking-wide">
+                  Rengjøring
+                </span>
+                <span className="text-[10px] text-muted-foreground ml-auto">
+                  {cleaningTasks.length} oppg.
+                </span>
+              </div>
+
+              {cleaningTasks.length > 0 ? (
+                cleaningTasks.map(task => (
+                  <TaskCard
+                    key={task.id}
+                    task={task}
+                    onStatusChange={onStatusChange}
+                    isDragging={task.id === activeId}
+                    highlight
+                  />
+                ))
+              ) : (
+                <div className="text-[11px] text-muted-foreground/40 text-center py-2 border border-dashed border-sky-200 dark:border-sky-900 rounded-lg">
+                  Ingen rengjøringsoppgaver
+                </div>
+              )}
+
+              {/* Divider */}
+              <div className="flex items-center gap-2 my-1">
+                <div className="flex-1 border-t border-border/60" />
+                <span className="text-[10px] text-muted-foreground uppercase tracking-wide">Andre oppgaver</span>
+                <div className="flex-1 border-t border-border/60" />
+              </div>
+            </>
+          )}
+
+          {/* Other tasks (or all tasks for non-Klargjører) */}
+          {otherTasks.map(task => (
             <TaskCard
               key={task.id}
               task={task}
@@ -183,6 +247,7 @@ function KanbanColumn({ col, tasks, isDropTarget, activeId, onStatusChange }: {
               isDragging={task.id === activeId}
             />
           ))}
+
           {tasks.length === 0 && !isDropTarget && (
             <div className="flex-1 flex items-center justify-center min-h-[80px] border-2 border-dashed border-black/[0.08] dark:border-white/[0.08] rounded-xl">
               <p className="text-[12px] text-muted-foreground/50">Drop tasks here</p>
@@ -197,11 +262,12 @@ function KanbanColumn({ col, tasks, isDropTarget, activeId, onStatusChange }: {
   );
 }
 
-function TaskCard({ task, onStatusChange, isDragging, isOverlay }: {
+function TaskCard({ task, onStatusChange, isDragging, isOverlay, highlight }: {
   task: any;
   onStatusChange: (id: number, status: string) => void;
   isDragging?: boolean;
   isOverlay?: boolean;
+  highlight?: boolean;
 }) {
   const { attributes, listeners, setNodeRef, transform, transition } = useSortable({ id: task.id });
 
@@ -216,11 +282,19 @@ function TaskCard({ task, onStatusChange, isDragging, isOverlay }: {
     task.priority === "Medium" ? "bg-amber-100 text-amber-700 dark:bg-amber-950/50 dark:text-amber-400" :
                                  "bg-slate-100 text-slate-600 dark:bg-slate-800 dark:text-slate-400";
 
+  // Format date — show relative age so Klargjører sees how long a task has waited
+  const createdDate = task.createdAt ? new Date(task.createdAt) : null;
+  const ageLabel = createdDate ? formatAge(createdDate) : null;
+
   const cardEl = (
     <div
       ref={setNodeRef}
       style={style}
-      className={`group bg-white/70 dark:bg-white/[0.05] border border-black/[0.09] dark:border-white/[0.13] rounded-xl transition-all
+      className={`group border rounded-xl transition-all
+        ${highlight
+          ? "bg-sky-50/80 dark:bg-sky-950/20 border-sky-200 dark:border-sky-800/60"
+          : "bg-white/70 dark:bg-white/[0.05] border-black/[0.09] dark:border-white/[0.13]"
+        }
         ${isOverlay ? "shadow-2xl rotate-1 scale-105 opacity-95" : "hover:shadow-md hover:-translate-y-0.5"}
         ${isDragging ? "opacity-40" : ""}
       `}
@@ -269,7 +343,7 @@ function TaskCard({ task, onStatusChange, isDragging, isOverlay }: {
             <div className="flex items-center justify-between pt-2.5 border-t border-black/[0.06] dark:border-white/[0.07]">
               <div className="flex items-center gap-1 text-[11px] text-muted-foreground">
                 <Clock className="h-3 w-3" />
-                {task.dueAt ? new Date(task.dueAt).toLocaleDateString() : "No due date"}
+                {ageLabel ?? (task.dueAt ? new Date(task.dueAt).toLocaleDateString("nb-NO") : "Ingen dato")}
               </div>
               <div className="h-6 w-6 rounded-full bg-primary/10 flex items-center justify-center text-[10px] font-bold text-primary shrink-0">
                 {task.assignee ? task.assignee.name.charAt(0).toUpperCase() : "?"}
@@ -290,6 +364,20 @@ function TaskCard({ task, onStatusChange, isDragging, isOverlay }: {
   }
 
   return cardEl;
+}
+
+/** Returns a human-readable age string like "3 dager siden" */
+export function formatAge(date: Date): string {
+  const diff = Math.max(0, Date.now() - date.getTime());
+  const totalMinutes = Math.floor(diff / 60_000);
+  const totalHours   = Math.floor(diff / 3_600_000);
+  const totalDays    = Math.floor(diff / 86_400_000);
+
+  if (totalMinutes < 60)  return `${totalMinutes}m siden`;
+  if (totalHours < 24)    return totalHours === 1 ? "1 time siden" : `${totalHours} timer siden`;
+  if (totalDays < 30)     return totalDays === 1 ? "1 dag siden" : `${totalDays} dager siden`;
+  const months = Math.floor(totalDays / 30);
+  return months === 1 ? "1 mnd siden" : `${months} mnd siden`;
 }
 
 function CreateTaskDialog({ open, onOpenChange }: any) {

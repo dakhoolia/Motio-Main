@@ -23,6 +23,8 @@ import ShowroomDetailPage from "@/pages/showroom-detail";
 import ContractsPage from "@/pages/contracts";
 import ContractDetailPage from "@/pages/contract-detail";
 import ContractTemplatesPage from "@/pages/contract-templates";
+import EmbedSettingsPage from "@/pages/embed-settings";
+import SecuritySettingsPage from "@/pages/security-settings";
 import NotFound from "@/pages/not-found";
 
 function PrivateRoute({ component: Component, allowedRoles, ...rest }: any) {
@@ -103,6 +105,13 @@ function Router() {
       </Route>
       <Route path="/contract-templates">
         {() => <PrivateRoute component={ContractTemplatesPage} allowedRoles={["Admin"]} />}
+      </Route>
+
+      <Route path="/settings/embed">
+        {() => <PrivateRoute component={EmbedSettingsPage} allowedRoles={["Admin"]} />}
+      </Route>
+      <Route path="/settings/security">
+        {() => <PrivateRoute component={SecuritySettingsPage} />}
       </Route>
 
       <Route path="/showroom" component={ShowroomPage} />

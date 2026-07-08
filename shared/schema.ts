@@ -1,4 +1,4 @@
-import { pgTable, text, serial, integer, boolean, timestamp, decimal, date, pgEnum } from "drizzle-orm/pg-core";
+import { pgTable, text, serial, integer, boolean, timestamp, decimal, date, pgEnum, varchar, json, index } from "drizzle-orm/pg-core";
 import { relations } from "drizzle-orm";
 import { createInsertSchema } from "drizzle-zod";
 import { z } from "zod";
@@ -27,6 +27,8 @@ export const users = pgTable("users", {
   isActive: boolean("is_active").default(true),
   mustChangePassword: boolean("must_change_password").default(true),
   avatarUrl: text("avatar_url"),
+  totpSecret: text("totp_secret"), // encrypted at rest (enc:v1:… format)
+  totpEnabled: boolean("totp_enabled").default(false),
   createdAt: timestamp("created_at").defaultNow(),
 });
 
@@ -292,6 +294,27 @@ export const tasksRelations = relations(tasks, ({ one }) => ({
   createdBy: one(users, { fields: [tasks.createdById], references: [users.id], relationName: "tasks_creator" }),
 }));
 
+// ── Session store (managed by connect-pg-simple — declared so drizzle-kit
+//    push doesn't try to drop it) ──────────────────────────────────────────────
+
+export const sessionTable = pgTable("session", {
+  sid: varchar("sid").primaryKey(),
+  sess: json("sess").notNull(),
+  expire: timestamp("expire", { precision: 6 }).notNull(),
+}, (table) => [
+  index("IDX_session_expire").on(table.expire),
+]);
+
+// ── Dealership settings (single-tenant: one row) ─────────────────────────────
+
+export const dealershipSettings = pgTable("dealership_settings", {
+  id: serial("id").primaryKey(),
+  name: text("name").notNull().default("My Dealership"),
+  slug: text("slug").notNull().unique(),
+  createdAt: timestamp("created_at").defaultNow(),
+  updatedAt: timestamp("updated_at").defaultNow(),
+});
+
 // ── Insert schemas ────────────────────────────────────────────────────────────
 
 export const insertUserSchema = createInsertSchema(users).omit({ id: true, createdAt: true });
@@ -307,6 +330,16 @@ export const insertAuditLogSchema = createInsertSchema(auditLogs).omit({ id: tru
 export const insertMessageSchema = createInsertSchema(messages).omit({ id: true, createdAt: true });
 export const insertContractTemplateSchema = createInsertSchema(contractTemplates).omit({ id: true, createdAt: true });
 export const insertContractSchema = createInsertSchema(contracts).omit({ id: true, createdAt: true });
+export const insertDealershipSettingsSchema = createInsertSchema(dealershipSettings).omit({ id: true, createdAt: true, updatedAt: true });
+
+// Password policy: min 12 chars, upper + lower + digit + symbol
+export const passwordSchema = z
+  .string()
+  .min(12, "Passordet må ha minst 12 tegn")
+  .regex(/[a-z]/, "Passordet må inneholde minst én liten bokstav")
+  .regex(/[A-Z]/, "Passordet må inneholde minst én stor bokstav")
+  .regex(/[0-9]/, "Passordet må inneholde minst ett tall")
+  .regex(/[^a-zA-Z0-9]/, "Passordet må inneholde minst ett spesialtegn");
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
@@ -333,6 +366,9 @@ export type ContractTemplate = typeof contractTemplates.$inferSelect;
 export type InsertContractTemplate = z.infer<typeof insertContractTemplateSchema>;
 export type Contract = typeof contracts.$inferSelect;
 export type InsertContract = z.infer<typeof insertContractSchema>;
+
+export type DealershipSettings = typeof dealershipSettings.$inferSelect;
+export type InsertDealershipSettings = z.infer<typeof insertDealershipSettingsSchema>;
 
 export type ContractWithDetails = Contract & {
   template: ContractTemplate | null;

@@ -16,6 +16,8 @@ import {
   FileText,
   Sun,
   Moon,
+  Code2,
+  ShieldCheck,
   type LucideIcon,
 } from "lucide-react";
 import logoImg from "@assets/logo_1780527843786.png";
@@ -228,6 +230,8 @@ export function LayoutShell({ children, chatLayout }: { children: React.ReactNod
     { name: "Leaderboard", href: "/leaderboard", icon: Trophy },
     { name: "Messages", href: "/chat", icon: MessageCircle, badge: totalUnread },
     { name: "Users", href: "/admin/users", icon: Users, roles: [ROLE_NAMES.ADMIN] },
+    { name: "Embed", href: "/settings/embed", icon: Code2, roles: [ROLE_NAMES.ADMIN] },
+    { name: "Sikkerhet", href: "/settings/security", icon: ShieldCheck },
   ];
 
   const navigation = allNavigation.filter((item) => {

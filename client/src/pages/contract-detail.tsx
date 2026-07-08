@@ -198,15 +198,18 @@ function BankIdModal({ open, party, onClose, onSigned }: { open: boolean; party:
         <DialogHeader>
           <DialogTitle className="flex items-center gap-2">
             <ShieldCheck className="h-5 w-5 text-blue-600" />
-            BankID-signering — {partyLabel}
+            Signering — {partyLabel} (simulert)
           </DialogTitle>
         </DialogHeader>
         <div className="py-2">
           {step === "phone" && (
             <div className="space-y-4">
-              <div className="bg-blue-50 dark:bg-blue-950/30 rounded-xl p-4 text-center">
-                <p className="text-sm text-blue-700 dark:text-blue-400 font-medium">Skriv inn mobilnummer for å motta BankID-forespørsel</p>
+              <div className="bg-amber-50 dark:bg-amber-950/30 border border-amber-200 dark:border-amber-800 rounded-xl p-4">
+                <p className="text-sm text-amber-800 dark:text-amber-400 font-medium">
+                  ⚠️ Dette er en simulert signering. Ingen BankID-forespørsel sendes, og ingen identitet verifiseres. Signaturen er ikke en juridisk bindende e-signatur.
+                </p>
               </div>
+              <p className="text-sm text-muted-foreground">Registrer mobilnummeret til {partyLabel} for dokumentasjon:</p>
               <input
                 value={phone}
                 onChange={e => setPhone(e.target.value)}
@@ -218,7 +221,7 @@ function BankIdModal({ open, party, onClose, onSigned }: { open: boolean; party:
               <div className="flex gap-2">
                 <Button variant="outline" className="flex-1" onClick={onClose}>Avbryt</Button>
                 <Button className="flex-1 bg-blue-600 hover:bg-blue-700" onClick={handleStart} disabled={phone.replace(/\s/g, "").length < 8} data-testid="button-bankid-confirm">
-                  Bekreft med BankID
+                  Bekreft signering (simulert)
                 </Button>
               </div>
             </div>
@@ -228,8 +231,8 @@ function BankIdModal({ open, party, onClose, onSigned }: { open: boolean; party:
               <div className="w-16 h-16 rounded-full bg-blue-100 flex items-center justify-center mx-auto">
                 <Loader2 className="h-8 w-8 text-blue-600 animate-spin" />
               </div>
-              <p className="font-semibold">Venter på BankID…</p>
-              <p className="text-sm text-muted-foreground">Åpne BankID-appen på mobilen din og bekreft signeringen</p>
+              <p className="font-semibold">Registrerer signering…</p>
+              <p className="text-sm text-muted-foreground">Simulert signering — ingen BankID-verifisering utføres</p>
             </div>
           )}
           {step === "done" && (
@@ -237,8 +240,8 @@ function BankIdModal({ open, party, onClose, onSigned }: { open: boolean; party:
               <div className="w-16 h-16 rounded-full bg-emerald-100 flex items-center justify-center mx-auto">
                 <CheckCircle2 className="h-9 w-9 text-emerald-600" />
               </div>
-              <p className="font-semibold">Signering bekreftet!</p>
-              <p className="text-sm text-muted-foreground">Kontrakten er signert av {partyLabel}</p>
+              <p className="font-semibold">Signering registrert (simulert)</p>
+              <p className="text-sm text-muted-foreground">Kontrakten er merket som signert av {partyLabel} — uten identitetsverifisering</p>
             </div>
           )}
         </div>
@@ -320,7 +323,7 @@ export default function ContractDetailPage() {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["/api/contracts", id] });
       setBankIdModal(null);
-      toast({ title: "Signert med BankID!" });
+      toast({ title: "Signering registrert (simulert)" });
     },
     onError: () => toast({ title: "Signering feilet", variant: "destructive" }),
   });
@@ -635,7 +638,7 @@ export default function ContractDetailPage() {
             <div className="rounded-xl border border-black/[0.07] dark:border-white/[0.09] overflow-hidden">
               <div className="bg-slate-50 dark:bg-white/[0.04] px-4 py-2.5 border-b border-black/[0.07] dark:border-white/[0.07] flex items-center gap-2">
                 <ShieldCheck className="h-4 w-4 text-blue-600" />
-                <h3 className="text-[11px] font-bold uppercase tracking-wider text-muted-foreground">BankID-signering</h3>
+                <h3 className="text-[11px] font-bold uppercase tracking-wider text-muted-foreground">Signering (simulert — uten BankID-verifisering)</h3>
               </div>
               <div className="p-4 grid grid-cols-1 md:grid-cols-2 gap-4">
                 {[
@@ -653,7 +656,7 @@ export default function ContractDetailPage() {
                     </div>
                     {signed ? (
                       <span className="flex items-center gap-1.5 text-emerald-600 text-xs font-semibold">
-                        <CheckCircle2 className="h-4 w-4" /> Signert
+                        <CheckCircle2 className="h-4 w-4" /> Signert (simulert)
                       </span>
                     ) : canSign ? (
                       <Button size="sm" className="bg-blue-600 hover:bg-blue-700 text-xs text-white h-8" onClick={() => setBankIdModal(party)} data-testid={`button-sign-${party}`}>

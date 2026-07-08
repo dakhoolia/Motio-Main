@@ -1,13 +1,15 @@
 import { db } from "./db";
-import { 
+import {
   users, vehicles, tasks, sales, roles, vehicleStatuses, locations, auditLogs, photos,
   conversations, conversationMembers, messages,
   contractTemplates, contracts,
+  dealershipSettings,
   type User, type InsertUser, type Vehicle, type InsertVehicle, type Photo,
   type Task, type InsertTask, type Sale, type InsertSale, type Role, type VehicleStatus, type Location,
   type AuditLog, type InsertAuditLog, type Conversation, type Message,
   type ChatMember, type ConversationWithDetails, type MessageWithSender,
   type ContractTemplate, type InsertContractTemplate, type Contract, type InsertContract, type ContractWithDetails,
+  type DealershipSettings,
   ROLE_NAMES
 } from "@shared/schema";
 import { eq, desc, sql, and, lt, inArray, ne } from "drizzle-orm";
@@ -79,6 +81,14 @@ export interface IStorage {
   updateContract(id: number, updates: Partial<InsertContract>): Promise<Contract>;
   deleteContract(id: number): Promise<void>;
   signContract(id: number, party: "buyer" | "seller", bankIdRef: string): Promise<Contract>;
+
+  // Sessions
+  deleteUserSessions(userId: number, exceptSid?: string): Promise<void>;
+
+  // Dealership settings
+  getDealershipSettings(): Promise<DealershipSettings | undefined>;
+  upsertDealershipSettings(updates: { name: string; slug: string }): Promise<DealershipSettings>;
+  getVehiclesBySlug(slug: string): Promise<(Vehicle & { status: VehicleStatus; location: Location | null; coverPhotoUrl: string | null })[] | null>;
 }
 
 export class DatabaseStorage implements IStorage {
@@ -95,7 +105,9 @@ export class DatabaseStorage implements IStorage {
   async getUserWithRole(id: number): Promise<(User & { role: Role | null }) | undefined> {
     const result = await db.select().from(users).leftJoin(roles, eq(users.roleId, roles.id)).where(eq(users.id, id));
     if (!result.length) return undefined;
-    return { ...result[0].users, role: result[0].roles };
+    // Never expose the password hash or TOTP secret outside the auth layer
+    const { password: _pw, totpSecret: _ts, ...safeUser } = result[0].users;
+    return { ...safeUser, role: result[0].roles } as User & { role: Role | null };
   }
 
   async createUser(user: InsertUser): Promise<User> {
@@ -109,7 +121,12 @@ export class DatabaseStorage implements IStorage {
   }
 
   async getAllUsers(): Promise<(User & { role: Role | null })[]> {
-    return await db.select().from(users).leftJoin(roles, eq(users.roleId, roles.id)).then(res => res.map(r => ({ ...r.users, role: r.roles })));
+    const res = await db.select().from(users).leftJoin(roles, eq(users.roleId, roles.id));
+    // Never expose password hashes or TOTP secrets outside the auth layer
+    return res.map(r => {
+      const { password: _pw, totpSecret: _ts, ...safeUser } = r.users;
+      return { ...safeUser, role: r.roles } as User & { role: Role | null };
+    });
   }
 
   async getRoles(): Promise<Role[]> {
@@ -613,6 +630,43 @@ export class DatabaseStorage implements IStorage {
     return c;
   }
 
+  async deleteUserSessions(userId: number, exceptSid?: string): Promise<void> {
+    // The session table is managed by connect-pg-simple; passport stores the
+    // user id at sess.passport.user. Used to revoke sessions on password
+    // change/reset and account deactivation.
+    if (exceptSid) {
+      await db.execute(sql`DELETE FROM session WHERE (sess #>> '{passport,user}')::int = ${userId} AND sid <> ${exceptSid}`);
+    } else {
+      await db.execute(sql`DELETE FROM session WHERE (sess #>> '{passport,user}')::int = ${userId}`);
+    }
+  }
+
+  async getDealershipSettings(): Promise<DealershipSettings | undefined> {
+    const [row] = await db.select().from(dealershipSettings).limit(1);
+    return row;
+  }
+
+  async upsertDealershipSettings(updates: { name: string; slug: string }): Promise<DealershipSettings> {
+    const existing = await this.getDealershipSettings();
+    if (existing) {
+      const [updated] = await db
+        .update(dealershipSettings)
+        .set({ name: updates.name, slug: updates.slug, updatedAt: new Date() })
+        .where(eq(dealershipSettings.id, existing.id))
+        .returning();
+      return updated;
+    }
+    const [created] = await db.insert(dealershipSettings).values(updates).returning();
+    return created;
+  }
+
+  async getVehiclesBySlug(slug: string): Promise<(Vehicle & { status: VehicleStatus; location: Location | null; coverPhotoUrl: string | null })[] | null> {
+    // Verify slug matches this instance
+    const [settings] = await db.select().from(dealershipSettings).where(eq(dealershipSettings.slug, slug)).limit(1);
+    if (!settings) return null;
+    return this.getPublicVehicles();
+  }
+
   async seedMetadata(): Promise<void> {
     const existingRoles = await this.getRoles();
     const requiredRoles = [ROLE_NAMES.ADMIN, ROLE_NAMES.HYBRID, ROLE_NAMES.INNKJOPER, ROLE_NAMES.SELGER, ROLE_NAMES.KLARGJORER];
@@ -643,6 +697,11 @@ export class DatabaseStorage implements IStorage {
         { name: 'Lot B' },
         { name: 'Workshop' },
       ]);
+    }
+
+    const existingSettings = await this.getDealershipSettings();
+    if (!existingSettings) {
+      await db.insert(dealershipSettings).values({ name: 'My Dealership', slug: 'my-dealership' });
     }
   }
 }

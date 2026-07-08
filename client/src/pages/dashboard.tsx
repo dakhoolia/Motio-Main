@@ -2,8 +2,9 @@ import { useVehicles } from "@/hooks/use-vehicles";
 import { useTasks } from "@/hooks/use-tasks";
 import { useAuth } from "@/hooks/use-auth";
 import { LayoutShell } from "@/components/layout-shell";
+import { formatAge } from "@/pages/tasks";
 
-import { Loader2, Car, AlertCircle, CheckCircle2, DollarSign, Plus, Wrench } from "lucide-react";
+import { Loader2, Car, AlertCircle, CheckCircle2, DollarSign, Plus, Wrench, Sparkles } from "lucide-react";
 import { VehicleCard } from "@/components/vehicle-card";
 import { Button } from "@/components/ui/button";
 import { Link } from "wouter";
@@ -25,7 +26,13 @@ export default function DashboardPage() {
   }
 
   const vehicles = vehiclesData?.data || [];
-  const tasks = tasksData || [];
+
+  // Sort tasks oldest-first
+  const tasks = [...(tasksData || [])].sort((a, b) => {
+    const da = a.createdAt ? new Date(a.createdAt).getTime() : 0;
+    const db = b.createdAt ? new Date(b.createdAt).getTime() : 0;
+    return da - db;
+  });
 
   const totalVehicles = vehicles.length;
   const inStock = vehicles.filter(v => ["Intake", "Klargjøring", "Listed"].includes(v.status.name)).length;
@@ -113,43 +120,57 @@ export default function DashboardPage() {
                 <Button variant="ghost">View All</Button>
               </Link>
             </div>
-            <div className="glass-card rounded-2xl overflow-hidden">
-              {tasks.length === 0 ? (
-                <div className="p-8 text-center text-muted-foreground text-sm">
-                  No open tasks
+
+            {tasks.length === 0 ? (
+              <div className="glass-card rounded-2xl p-8 text-center text-muted-foreground text-sm">
+                No open tasks
+              </div>
+            ) : roleName === ROLE_NAMES.KLARGJORER ? (
+              /* ── Klargjører: split into Cleaning + Other ── */
+              <div className="space-y-4">
+                {/* Cleaning section */}
+                <div className="glass-card rounded-2xl overflow-hidden">
+                  <div className="flex items-center gap-2 px-4 py-2.5 bg-sky-50 dark:bg-sky-950/30 border-b border-sky-100 dark:border-sky-900">
+                    <Sparkles className="h-3.5 w-3.5 text-sky-500" />
+                    <span className="text-[12px] font-semibold text-sky-700 dark:text-sky-400 uppercase tracking-wide">Rengjøring</span>
+                    <span className="ml-auto text-[11px] text-sky-600 dark:text-sky-400 font-medium">
+                      {tasks.filter(t => t.type === "Cleaning").length} oppgaver
+                    </span>
+                  </div>
+                  {tasks.filter(t => t.type === "Cleaning").length === 0 ? (
+                    <p className="px-4 py-3 text-[12px] text-muted-foreground/50 italic">Ingen rengjøringsoppgaver</p>
+                  ) : (
+                    tasks.filter(t => t.type === "Cleaning").map((task, i, arr) => (
+                      <TaskRow key={task.id} task={task} last={i === arr.length - 1} highlight />
+                    ))
+                  )}
                 </div>
-              ) : (
-                <div>
-                  {tasks.slice(0, roleName === ROLE_NAMES.KLARGJORER ? 10 : 5).map((task, i) => (
-                    <div
-                      key={task.id}
-                      className="px-4 py-3 hover:bg-black/[0.03] dark:hover:bg-white/[0.03] transition-colors"
-                      style={{ borderBottom: i < Math.min(tasks.length, roleName === ROLE_NAMES.KLARGJORER ? 10 : 5) - 1 ? "1px solid rgba(0,0,0,0.05)" : "none" }}
-                    >
-                      <div className="flex justify-between items-start mb-1 gap-2">
-                        <h4 className="font-medium text-[13px] text-foreground">{task.title}</h4>
-                        <span className={`text-[10px] px-2 py-0.5 rounded-full font-semibold whitespace-nowrap ${
-                          task.priority === 'High' ? 'bg-red-100 text-red-700 dark:bg-red-950/50 dark:text-red-400' : 'bg-muted text-muted-foreground'
-                        }`}>
-                          {task.priority}
-                        </span>
-                      </div>
-                      <p className="text-[11px] text-muted-foreground mb-1.5">
-                        {task.vehicle ? `${task.vehicle.year} ${task.vehicle.model}` : 'General'}
-                      </p>
-                      <div className="flex items-center justify-between">
-                        <span className="text-[11px] text-muted-foreground">
-                          {new Date(task.createdAt!).toLocaleDateString()}
-                        </span>
-                        <span className="text-[11px] font-semibold text-primary">
-                          {task.assignee?.name || 'Unassigned'}
-                        </span>
-                      </div>
-                    </div>
-                  ))}
+
+                {/* Other tasks section */}
+                <div className="glass-card rounded-2xl overflow-hidden">
+                  <div className="flex items-center gap-2 px-4 py-2.5 bg-muted/50 border-b border-border/50">
+                    <span className="text-[12px] font-semibold text-muted-foreground uppercase tracking-wide">Andre oppgaver</span>
+                    <span className="ml-auto text-[11px] text-muted-foreground font-medium">
+                      {tasks.filter(t => t.type !== "Cleaning").length} oppgaver
+                    </span>
+                  </div>
+                  {tasks.filter(t => t.type !== "Cleaning").length === 0 ? (
+                    <p className="px-4 py-3 text-[12px] text-muted-foreground/50 italic">Ingen andre oppgaver</p>
+                  ) : (
+                    tasks.filter(t => t.type !== "Cleaning").map((task, i, arr) => (
+                      <TaskRow key={task.id} task={task} last={i === arr.length - 1} />
+                    ))
+                  )}
                 </div>
-              )}
-            </div>
+              </div>
+            ) : (
+              /* ── All other roles: simple list ── */
+              <div className="glass-card rounded-2xl overflow-hidden">
+                {tasks.slice(0, 5).map((task, i, arr) => (
+                  <TaskRow key={task.id} task={task} last={i === arr.slice(0, 5).length - 1} />
+                ))}
+              </div>
+            )}
           </div>
         </div>
       </div>
@@ -178,6 +199,41 @@ function getRoleSubtitle(roleName: string | null): string {
     case ROLE_NAMES.KLARGJORER: return "Prep pipeline and task management";
     default: return "Overview of your fleet operations";
   }
+}
+
+function TaskRow({ task, last, highlight }: { task: any; last: boolean; highlight?: boolean }) {
+  const age = task.createdAt ? formatAge(new Date(task.createdAt)) : null;
+  return (
+    <Link href={task.vehicleId ? `/vehicles/${task.vehicleId}` : "/tasks"}>
+      <div
+        className={`px-4 py-3 transition-colors cursor-pointer
+          ${highlight
+            ? "bg-sky-50/60 dark:bg-sky-950/10 hover:bg-sky-100/60 dark:hover:bg-sky-950/20"
+            : "hover:bg-black/[0.03] dark:hover:bg-white/[0.03]"
+          }
+          ${!last ? "border-b border-black/[0.05] dark:border-white/[0.05]" : ""}
+        `}
+      >
+        <div className="flex justify-between items-start mb-1 gap-2">
+          <h4 className="font-medium text-[13px] text-foreground leading-snug">{task.title}</h4>
+          <span className={`text-[10px] px-2 py-0.5 rounded-full font-semibold whitespace-nowrap shrink-0 ${
+            task.priority === "High"
+              ? "bg-red-100 text-red-700 dark:bg-red-950/50 dark:text-red-400"
+              : "bg-muted text-muted-foreground"
+          }`}>
+            {task.priority}
+          </span>
+        </div>
+        <p className="text-[11px] text-muted-foreground mb-1.5">
+          {task.vehicle ? `${task.vehicle.year} ${task.vehicle.make} ${task.vehicle.model}` : "General"}
+        </p>
+        <div className="flex items-center justify-between">
+          <span className="text-[11px] text-muted-foreground">{age ?? "—"}</span>
+          <span className="text-[11px] font-semibold text-primary">{task.assignee?.name || "Unassigned"}</span>
+        </div>
+      </div>
+    </Link>
+  );
 }
 
 function StatCard({ title, value, icon: Icon, color, bgColor, href }: any) {
